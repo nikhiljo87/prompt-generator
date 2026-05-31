@@ -25,7 +25,8 @@ app.post('/chat', async (req, res) => {
         // Use AbortController to enforce a long fetch timeout (e.g., 5 minutes)
         const controller = new AbortController();
         const FETCH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-        const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        let timeout; // declared so catch/finally can clear it
+        timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
         const response = await fetch('http://localhost:11434/api/chat', {
             method: 'POST',
@@ -134,7 +135,11 @@ app.post('/chat', async (req, res) => {
             res.send(txt);
         }
     } catch (error) {
+        try { if (typeof timeout !== 'undefined') clearTimeout(timeout); } catch(e){}
         console.error('Ollama Error:', error);
+        if (error && (error.name === 'AbortError' || error.type === 'aborted')) {
+            return res.status(504).json({ error: 'Upstream request timed out' });
+        }
         res.status(500).json({ error: 'Failed to connect to Ollama' });
     }
 });
@@ -228,24 +233,68 @@ app.post('/rag', async (req, res) => {
     const prompt = `You are an expert financial analyst. Use the following context extracted from a document to answer the question.\n\nCONTEXT:\n${context}\n\nQUESTION:\n${query}`;
 
     try {
-        // Call model (non-stream) for RAG
-        const controller = new AbortController();
-        const FETCH_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
-        const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        // Call model (non-stream) for RAG with retries/backoff
+        const MAX_RETRIES = 2; // total attempts = MAX_RETRIES + 1
+        const FETCH_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes per attempt
+        let attempt = 0;
+        let lastErr = null;
 
-        const response = await fetch('http://localhost:11434/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'mistral', messages: [{ role: 'user', content: prompt }], stream: false }),
-            signal: controller.signal
-        });
-        clearTimeout(timeout);
+        while (attempt <= MAX_RETRIES) {
+            attempt++;
+            const controller = new AbortController();
+            let timeout;
+            timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-        if (!response.ok) return res.status(500).json({ error: 'model failed' });
-        const data = await response.json();
-        // Cache and return
-        ragCache.set(cacheKey, data);
-        return res.json({ cached: false, result: data });
+            try {
+                const response = await fetch('http://localhost:11434/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: 'mistral', messages: [{ role: 'user', content: prompt }], stream: false }),
+                    signal: controller.signal
+                });
+                clearTimeout(timeout);
+
+                if (!response.ok) {
+                    lastErr = new Error('model failed: ' + response.status);
+                    console.error(`RAG attempt ${attempt} received non-OK status:`, response.status);
+                    if (response.status >= 500 && attempt <= MAX_RETRIES) {
+                        await new Promise(r => setTimeout(r, 1000 * attempt));
+                        continue; // retry on server errors
+                    }
+                    return res.status(500).json({ error: 'model failed' });
+                }
+
+                const data = await response.json();
+                // Cache and return
+                ragCache.set(cacheKey, data);
+                return res.json({ cached: false, result: data });
+            } catch (errInner) {
+                try { if (typeof timeout !== 'undefined') clearTimeout(timeout); } catch(e){}
+                console.error(`RAG attempt ${attempt} error:`, errInner && errInner.message ? errInner.message : errInner);
+                lastErr = errInner;
+
+                // If aborted due to timeout, retry a few times then return 504
+                if (errInner && (errInner.name === 'AbortError' || errInner.type === 'aborted')) {
+                    if (attempt <= MAX_RETRIES) {
+                        await new Promise(r => setTimeout(r, 1000 * attempt));
+                        continue;
+                    } else {
+                        return res.status(504).json({ error: 'Upstream request timed out' });
+                    }
+                }
+
+                // For other transient errors, retry a few times
+                if (attempt <= MAX_RETRIES) {
+                    await new Promise(r => setTimeout(r, 1000 * attempt));
+                    continue;
+                }
+
+                return res.status(500).json({ error: 'RAG model error' });
+            }
+        }
+
+        console.error('RAG failed after retries', lastErr);
+        return res.status(500).json({ error: 'RAG model error' });
     } catch (err) {
         console.error('RAG model error', err);
         return res.status(500).json({ error: 'RAG model error' });
