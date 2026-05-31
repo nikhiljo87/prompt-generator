@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Flow Diagram Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .panel h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            background: #eef0ff;
+            border-color: #764ba2;
+            transform: scale(1.02);
+        }
+
+        .upload-area.drag-over {
+            background: #e0e7ff;
+            border-color: #764ba2;
+        }
+
+        .upload-area p {
+            color: #666;
+            font-size: 1.1em;
+            margin: 10px 0;
+        }
+
+        #imageInput {
+            display: none;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 300px;
+            margin-top: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 20px;
+            font-size: 1em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #764ba2;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #653a89;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(118, 75, 162, 0.4);
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.95em;
+        }
+
+        .status.info {
+            background: #bee3f8;
+            color: #2c5282;
+            border-left: 4px solid #3182ce;
+        }
+
+        .status.success {
+            background: #c6f6d5;
+            color: #22543d;
+            border-left: 4px solid #38a169;
+        }
+
+        .status.error {
+            background: #fed7d7;
+            color: #742a2a;
+            border-left: 4px solid #fc8181;
+        }
+
+        .status.loading {
+            background: #feebc8;
+            color: #7c2d12;
+            border-left: 4px solid #fb923c;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .text-area-group {
+            margin-top: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            resize: vertical;
+            transition: border-color 0.3s ease;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .flow-output {
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            background: #f7fafc;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .mermaid {
+            display: flex;
+            justify-content: center;
+        }
+
+        .copy-btn {
+            padding: 8px 15px;
+            font-size: 0.85em;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .copy-btn:hover {
+            background: #5568d3;
+        }
+
+        .label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .card {
+            background: #f8f9ff;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .radio-group input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        .pii-mask-indicator {
+            background: #c6f6d5;
+            border-left: 4px solid #38a169;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-size: 0.9em;
+            color: #22543d;
+        }
+
+        .prompt-box {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.6;
+            margin: 15px 0;
+            border: 2px solid #4a5568;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .tab-btn {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            color: #999;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .stat-card {
+            background: #f0f4ff;
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.85em;
+            color: #666;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 1.5em;
+            color: #333;
+            font-weight: 700;
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Left Panel: Image Upload & OCR -->
+        <div class="panel">
+            <h2>📸 Image Upload & OCR</h2>
+            
+            <div class="upload-area" id="uploadArea">
+                <p>📎 Drag & drop image here or click to select</p>
+                <p style="font-size: 0.9em; color: #999;">Supports: JPG, PNG, GIF, WebP</p>
+            </div>
+            <input type="file" id="imageInput" accept="image/*">
+            
+            <img id="previewImage" class="preview-image" style="display: none;">
+            
+            <div class="button-group">
+                <button class="btn-primary" id="uploadBtn">📁 Choose File</button>
+                <button class="btn-danger" id="clearBtn" disabled>🗑️ Clear All</button>
+            </div>
+            
+            <div id="status"></div>
+            
+            <div class="text-area-group" style="margin-top: 20px;">
+                <label class="label">✨ Clean Extracted Text (OCR):</label>
+                <textarea id="ocrText" placeholder="Clean OCR text will appear automatically here after upload..."></textarea>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button class="copy-btn" onclick="copyToClipboard('ocrText')">📋 Copy</button>
+                    <button class="btn-secondary" style="padding: 8px 15px; font-size: 0.85em; flex: 1;" onclick="testSampleData()">🧪 Test Sample</button>
+                </div>
+            </div>
+
+            <div class="text-area-group">
+                <label class="label">📊 Document Statistics:</label>
+                <div class="stats" style="grid-template-columns: 1fr 1fr 1fr;">
+                    <div class="stat-card">
+                        <div class="stat-label">Words</div>
+                        <div class="stat-value" id="wordCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Lines</div>
+                        <div class="stat-value" id="lineCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Chars</div>
+                        <div class="stat-value" id="charCount">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Flow Diagram Generation -->
+        <div class="panel">
+            <h2>🤖 AI Prompt Optimizer & PII Masking</h2>
+            
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('step1')">1️⃣ Info</button>
+                <button class="tab-btn" onclick="switchTab('step2')">2️⃣ Mask PII</button>
+                <button class="tab-btn" onclick="switchTab('step3')">3️⃣ Analysis</button>
+                <button class="tab-btn" onclick="switchTab('step4')">4️⃣ Prompt</button>
+            </div>
+
+            <!-- Step 1: Document Info -->
+            <div id="step1" class="tab-content active">
+                <label class="label">📄 Document Type:</label>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="docType" value="balance-sheet" checked> Balance Sheet / Financial Report
+                    </label>
+                    <label>
+                        <input type="radio" name="docType" value="ipo"> IPO / Investment Documents
+                    </label>
+                    <label>
+                        <input type="radio" name="docType" value="both"> Both / Mixed Documents
+                    </label>
+                    <label>
+                        <input type="radio" name="docType" value="custom"> Custom Document
+                    </label>
+                </div>
+
+                <div class="text-area-group" style="margin-top: 20px;">
+                    <label class="label">📋 Document Title/Description:</label>
+                    <input type="text" id="docTitle" placeholder="e.g., Q4 2026 Financial Report" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 6px;">
+                </div>
+
+                <div class="card">
+                    <strong>⚙️ Cleaning Options:</strong>
+                    <div class="checkbox-group" style="margin-top: 10px;">
+                        <label>
+                            <input type="checkbox" id="removeNewlines" checked> Remove excessive newlines
+                        </label>
+                        <label>
+                            <input type="checkbox" id="normalizeSpaces" checked> Normalize spaces
+                        </label>
+                        <label>
+                            <input type="checkbox" id="removeSpecialChars"> Remove special characters
+                        </label>
+                    </div>
+                </div>
+
+                <button class="btn-primary" style="width: 100%; margin-top: 15px;" onclick="nextStep(1)">Next: Mask PII →</button>
+            </div>
+
+            <!-- Step 2: PII Masking -->
+            <div id="step2" class="tab-content">
+                <label class="label">🔒 Select Data to Mask:</label>
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" class="pii-mask" value="pan" checked> PAN (Permanent Account Number)
+                    </label>
+                    <label>
+                        <input type="checkbox" class="pii-mask" value="aadhaar" checked> Aadhaar Number
+                    </label>
+                    <label>
+                        <input type="checkbox" class="pii-mask" value="dob" checked> Date of Birth (DOB)
+                    </label>
+                    <label>
+                        <input type="checkbox" class="pii-mask" value="name" checked> Names & People
+                    </label>
+                    <label>
+                        <input type="checkbox" class="pii-mask" value="phone" checked> Phone Numbers
+                    </label>
+                    <label>
+                        <input type="checkbox" class="pii-mask" value="email" checked> Email Addresses
+                    </label>
+                    <label>
+                        <input type="checkbox" class="pii-mask" value="credit-card"> Credit Card Numbers
+                    </label>
+                    <label>
+                        <input type="checkbox" class="pii-mask" value="bank-account"> Bank Account Numbers
+                    </label>
+                    <label>
+                        <input type="checkbox" class="pii-mask" value="address" checked> Addresses
+                    </label>
+                    <label>
+                        <input type="checkbox" class="pii-mask" value="zip-code"> Postal/ZIP Codes
+                    </label>
+                </div>
+
+                <div class="pii-mask-indicator">
+                    <strong>✅ Selected:</strong> <span id="maskCount">0</span> data types will be masked
+                </div>
+
+                <button class="btn-primary" style="width: 100%; margin-top: 15px;" onclick="applyPIIMasking()">🔐 Apply PII Masking</button>
+
+                <div class="text-area-group" style="margin-top: 20px;">
+                    <label class="label">🛡️ Masked Text (Safe for AI):</label>
+                    <textarea id="maskedText" placeholder="Masked version will appear here..." readonly></textarea>
+                    <button class="copy-btn" onclick="copyToClipboard('maskedText')">📋 Copy Masked</button>
+                </div>
+
+                <button class="btn-primary" style="width: 100%; margin-top: 15px;" onclick="nextStep(2)">Next: Analysis →</button>
+            </div>
+
+            <!-- Step 3: Analysis Type Selection -->
+            <div id="step3" class="tab-content">
+                <label class="label">📊 What to Analyze:</label>
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" class="analysis-type" value="ratios" checked> Financial Ratios & Metrics
+                    </label>
+                    <label>
+                        <input type="checkbox" class="analysis-type" value="trends" checked> Trends & Growth Patterns
+                    </label>
+                    <label>
+                        <input type="checkbox" class="analysis-type" value="risks"> Risk Analysis & Concerns
+                    </label>
+                    <label>
+                        <input type="checkbox" class="analysis-type" value="benchmarking"> Industry Benchmarking
+                    </label>
+                    <label>
+                        <input type="checkbox" class="analysis-type" value="forecasting"> Forecasting & Predictions
+                    </label>
+                    <label>
+                        <input type="checkbox" class="analysis-type" value="investment"> Investment Potential
+                    </label>
+                </div>
+
+                <div class="text-area-group" style="margin-top: 20px;">
+                    <label class="label">🎯 Custom Analysis Questions (optional):</label>
+                    <textarea id="customQuestions" placeholder="E.g., What are the main revenue drivers?&#10;Is the company growing faster than competitors?&#10;What are the major risk factors?" style="height: 120px;"></textarea>
+                </div>
+
+                <div class="card">
+                    <strong>💡 Output Format Preference:</strong>
+                    <div class="radio-group" style="margin-top: 10px;">
+                        <label>
+                            <input type="radio" name="outputFormat" value="executive-summary" checked> Executive Summary
+                        </label>
+                        <label>
+                            <input type="radio" name="outputFormat" value="detailed-analysis"> Detailed Analysis
+                        </label>
+                        <label>
+                            <input type="radio" name="outputFormat" value="presentation"> Presentation Format
+                        </label>
+                        <label>
+                            <input type="radio" name="outputFormat" value="json"> JSON Format
+                        </label>
+                    </div>
+                </div>
+
+                <button class="btn-primary" style="width: 100%; margin-top: 15px;" onclick="nextStep(3)">Generate Prompt →</button>
+            </div>
+
+            <!-- Step 4: Optimized Prompt -->
+            <div id="step4" class="tab-content">
+                <label class="label">🚀 AI-Ready Optimized Prompt:</label>
+                
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-label">Raw Tokens</div>
+                        <div class="stat-value" id="rawTokens">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Masked Tokens</div>
+                        <div class="stat-value" id="maskedTokens">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Tokens Saved</div>
+                        <div class="stat-value" id="tokensSaved">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">PII Masked</div>
+                        <div class="stat-value" id="piiCount">0</div>
+                    </div>
+                </div>
+                
+                <div class="card" style="margin-top: 15px;">
+                    <strong>💰 Token Cost Analysis:</strong>
+                    <div style="margin-top: 10px; font-size: 0.9em;">
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+                            <span>📄 Raw Text Tokens:</span>
+                            <strong id="costRaw">0</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e2e8f0; padding-top: 10px; padding-bottom: 10px;">
+                            <span>🛡️ Masked Text Tokens:</span>
+                            <strong id="costMasked">0</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; padding-top: 10px; padding-bottom: 10px; color: #38a169; border-bottom: 2px solid #38a169; margin-bottom: 10px;">
+                            <span><strong>✅ Masking Saves:</strong></span>
+                            <strong id="costSavings">0 tokens (0%)</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; padding-top: 8px; color: #667eea;">
+                            <span>🚀 Final Prompt Tokens:</span>
+                            <strong id="costFinal">0</strong>
+                        </div>
+                        <div style="font-size: 0.75em; color: #999; margin-top: 12px; font-style: italic; padding-top: 8px; border-top: 1px solid #e2e8f0;">
+                            💡 Masking reduces tokens by replacing PII with short placeholders. Final prompt includes analysis instructions.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="prompt-box" id="optimizedPrompt">
+                    Optimized prompt will appear here...
+                </div>
+
+                <div class="button-group">
+                    <button class="copy-btn" style="flex: 1;" onclick="copyToClipboard('optimizedPrompt')">📋 Copy Prompt</button>
+                    <button class="btn-primary" style="flex: 1;" onclick="copyToAI()">🤖 Copy for ChatGPT/Claude</button>
+                </div>
+
+                <div class="button-group" style="margin-top:12px;">
+                    <button class="btn-primary" id="sendChatBtn" style="flex:1;" onclick="sendToChat()">📨 Send to Chat</button>
+                    <button class="btn-secondary" id="sendRagBtn" style="flex:1;" onclick="sendToRag()">🧭 Send to RAG (store + retrieve)</button>
+                </div>
+
+                <div class="text-area-group" style="margin-top: 18px;">
+                    <label class="label">📝 AI Output:</label>
+                    <textarea id="aiOutput" placeholder="Model output will appear here..." readonly style="height:200px;"></textarea>
+                    <div style="display:flex; gap:10px; margin-top:8px;"><button class="copy-btn" onclick="copyToClipboard('aiOutput')">📋 Copy Output</button><button class="btn-danger" onclick="clearAIOutput()">🗑️ Clear Output</button></div>
+                </div>
+
+                <div class="text-area-group" style="margin-top: 20px;">
+                    <label class="label">Raw Prompt (Edit if needed):</label>
+                    <textarea id="rawPrompt" style="height: 200px;"></textarea>
+                    <button class="btn-secondary" style="width: 100%; margin-top: 10px;" onclick="regenerateFromRaw()">🔄 Regenerate</button>
+                </div>
+
+                <button class="btn-primary" style="width: 100%; margin-top: 15px;" onclick="downloadPrompt()">⬇️ Download Prompt as TXT</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API base — when UI served from localhost:3000, API runs on 3001
+        const API_BASE = (window.API_BASE_OVERRIDE) ? window.API_BASE_OVERRIDE : 'http://localhost:3001';
+
+        let currentImageFile = null;
+        let isProcessing = false;
+        let maskedCount = 0;
+        let originalOCRText = '';
+
+        // PII Masking Patterns - Enhanced to catch Indian document formats
+        const piiPatterns = {
+            pan: {
+                pattern: /(?:PAN\s*[:=]?\s*)?([A-Z]{5,6}[0-9]{3,4}[A-Z]{1})\b/gi,
+                mask: '[PAN]',
+                description: 'PAN'
+            },
+            aadhaar: {
+                pattern: /(?:A+[a]?[d]+h[a]?[r]?s?\s*[:=]?\s*)?(?:([0-9]{4}\s[A-Za-z0-9]{4}\s[0-9]{4})|([A-Za-z0-9]{4}\s[A-Za-z0-9]{4}\s\d{4})|(\d{4}[\s\-]\d{4}[\s\-]\d{4}))\b/gi,
+                mask: '[AADHAAR]',
+                description: 'Aadhaar'
+            },
+            dob: {
+                pattern: /(?:DOB\s*[:=]?\s*)?(\d{1,2}[-\/]\d{2}[-\/]\d{4}|\d{4}[-\/]\d{2}[-\/]\d{2})/gi,
+                mask: '[DOB]',
+                description: 'Date of Birth'
+            },
+            phone: {
+                pattern: /(?:\+91[-.\s]?)?(?:\(0)?\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{4,5}/gi,
+                mask: '[PHONE]',
+                description: 'Phone'
+            },
+            email: {
+                pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gi,
+                mask: '[EMAIL]',
+                description: 'Email'
+            },
+            'credit-card': {
+                pattern: /\b(?:\d{4}[-\s]?){3}\d{4}\b/gi,
+                mask: '[CC]',
+                description: 'Credit Card'
+            },
+            'bank-account': {
+                pattern: /(?:Account|A\/C|AC|Acc)[\s:=]+([0-9]{9,18})/gi,
+                mask: '[ACCOUNT]',
+                description: 'Bank Account'
+            },
+            name: {
+                pattern: /(?:Father['s]*\s*Name|Mother['s]*\s*Name|Spouse['s]*\s*Name|Guardian['s]*\s*Name|Company|Organization)\s*[:=]?\s+([A-Z][a-z.\-&\s]+(?:Ltd|Inc|Corp|Company|LLC|LLP|Limited|Private|Public)?)/gi,
+                mask: '[NAME]',
+                description: 'Names',
+                isCompany: true
+            },
+            address: {
+                pattern: /(?:Address\s*[:=]?\s*)?([A-Z][A-Za-z\s,.\-#]*(?:Mandir|Nagar|Colony|Chowk|Road|Street|Lane|Avenue|Rd|St|Ave|Apt|Plot|House|Ward|Sector|Block|Phase)[A-Za-z\s,.\-#]*[A-Za-z]*(?:Pradesh|State)?[A-Za-z\s,.\-#]*-?\d{6})/gi,
+                mask: '[ADDRESS]',
+                description: 'Address'
+            },
+            'zip-code': {
+                pattern: /\b\d{6}\b(?!\d)/g,
+                mask: '[ZIP]',
+                description: 'Postal Code'
+            }
+        };
+
+        // Setup drag and drop
+        const uploadArea = document.getElementById('uploadArea');
+        const imageInput = document.getElementById('imageInput');
+
+        uploadArea.addEventListener('click', () => imageInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('drag-over');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('drag-over');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) handleImageSelect(files[0]);
+        });
+
+        document.getElementById('uploadBtn').addEventListener('click', () => imageInput.click());
+        imageInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleImageSelect(e.target.files[0]);
+        });
+
+        function handleImageSelect(file) {
+            currentImageFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const previewImage = document.getElementById('previewImage');
+                previewImage.src = e.target.result;
+                previewImage.style.display = 'block';
+                showStatus('Image loaded! Starting OCR extraction...', 'loading');
+                document.getElementById('clearBtn').disabled = false;
+                // Auto-trigger OCR
+                performOCR(e.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function performOCR(imageData) {
+            if (!imageData) {
+                showStatus('❌ No image data', 'error');
+                return;
+            }
+            
+            showStatus('<span class="spinner"></span>Extracting text from image...', 'loading');
+            isProcessing = true;
+
+            try {
+                const result = await Tesseract.recognize(imageData, 'eng');
+                let text = result.data.text;
+                
+                // Clean the OCR text based on selected options
+                text = cleanOCRText(text);
+                
+                originalOCRText = text;
+                document.getElementById('ocrText').value = text;
+                updateDocumentStats(text);
+                
+                showStatus('✅ OCR extraction complete! Text cleaned and ready.', 'success');
+            } catch (error) {
+                showStatus('❌ OCR Error: ' + error.message, 'error');
+            }
+            isProcessing = false;
+        }
+
+        function cleanOCRText(text) {
+            let cleaned = text;
+            
+            // Remove excessive newlines
+            if (document.getElementById('removeNewlines').checked) {
+                cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+            }
+            
+            // Normalize spaces
+            if (document.getElementById('normalizeSpaces').checked) {
+                cleaned = cleaned.replace(/\s{2,}/g, ' ');
+                cleaned = cleaned.replace(/\n\s+/g, '\n');
+            }
+            
+            // Remove special characters (optional, as it may corrupt data)
+            if (document.getElementById('removeSpecialChars').checked) {
+                cleaned = cleaned.replace(/[^\w\s\n.,;:\-()]/g, '');
+            }
+            
+            return cleaned.trim();
+        }
+
+        function updateDocumentStats(text) {
+            const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+            const lines = text.split('\n').filter(l => l.trim().length > 0).length;
+            const chars = text.length;
+            
+            document.getElementById('wordCount').textContent = words;
+            document.getElementById('lineCount').textContent = lines;
+            document.getElementById('charCount').textContent = chars;
+        }
+
+        function testSampleData() {
+            const sampleText = `SRI RAM AY 2022-23 (i.e. FY 2021-22)
+Address : Ramjanki Mandir, Dashrath Nagar, Ayodhya, Uttar Pradesh-111111
+Computation of Income (ITR-4)
+PAN : ABCDEI234F 
+Aadhar : Olxx xxxx 1111
+DOB: 01/01/0001 
+Status : Individual
+Father's Name : Maharaj Dashrath
+Email: example@test.com
+Phone: +91 9876543210`;
+
+            document.getElementById('ocrText').value = sampleText;
+            updateDocumentStats(sampleText);
+            showStatus('✅ Sample ITR data loaded! Now try masking →', 'success');
+        }
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            currentImageFile = null;
+            document.getElementById('imageInput').value = '';
+            document.getElementById('previewImage').style.display = 'none';
+            document.getElementById('ocrText').value = '';
+            document.getElementById('maskedText').value = '';
+            document.getElementById('rawPrompt').value = '';
+            document.getElementById('optimizedPrompt').textContent = 'Optimized prompt will appear here...';
+            document.getElementById('clearBtn').disabled = true;
+            document.getElementById('status').innerHTML = '';
+            document.getElementById('wordCount').textContent = '0';
+            document.getElementById('lineCount').textContent = '0';
+            document.getElementById('charCount').textContent = '0';
+        });
+
+        // Tab Navigation
+        function switchTab(tabName) {
+            const contents = document.querySelectorAll('.tab-content');
+            const buttons = document.querySelectorAll('.tab-btn');
+            
+            contents.forEach(content => content.classList.remove('active'));
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Step Navigation
+        function nextStep(stepNum) {
+            const stepMap = {
+                1: 'step2',
+                2: 'step3',
+                3: 'step4'
+            };
+            if (stepMap[stepNum]) {
+                switchTabDirect(stepMap[stepNum]);
+            }
+        }
+
+        function switchTabDirect(tabName) {
+            const contents = document.querySelectorAll('.tab-content');
+            const buttons = document.querySelectorAll('.tab-btn');
+            
+            contents.forEach(content => content.classList.remove('active'));
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            document.getElementById(tabName).classList.add('active');
+            buttons.forEach((btn, index) => {
+                if (btn.getAttribute('onclick').includes(tabName)) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+
+        // Update mask count
+        document.querySelectorAll('.pii-mask').forEach(checkbox => {
+            checkbox.addEventListener('change', updateMaskCount);
+        });
+
+        function updateMaskCount() {
+            const count = document.querySelectorAll('.pii-mask:checked').length;
+            document.getElementById('maskCount').textContent = count;
+        }
+
+        updateMaskCount();
+
+        // PII Masking Function
+        function applyPIIMasking() {
+            let maskedText = document.getElementById('ocrText').value;
+            
+            if (!maskedText.trim()) {
+                showStatus('❌ Please extract OCR text first!', 'error');
+                return;
+            }
+            
+            let totalMaskCount = 0;
+            const selectedMasks = Array.from(document.querySelectorAll('.pii-mask:checked'))
+                .map(cb => cb.value);
+
+            // Apply patterns in order - most specific first
+            const maskOrder = ['pan', 'aadhaar', 'dob', 'email', 'phone', 'credit-card', 'bank-account', 'name', 'address', 'zip-code'];
+            
+            maskOrder.forEach(maskType => {
+                if (selectedMasks.includes(maskType) && piiPatterns[maskType]) {
+                    const pattern = piiPatterns[maskType];
+                    const matches = maskedText.match(pattern.pattern);
+                    if (matches) {
+                        totalMaskCount += matches.length;
+                        
+                        // Smart masking for names
+                        if (maskType === 'name') {
+                            maskedText = maskedText.replace(pattern.pattern, (match) => {
+                                if (match.toLowerCase().includes('ltd') || match.toLowerCase().includes('inc') || 
+                                    match.toLowerCase().includes('corp') || match.toLowerCase().includes('llc') ||
+                                    match.toLowerCase().includes('limited') || match.toLowerCase().includes('private')) {
+                                    return '[COMPANY]';
+                                }
+                                return '[NAME]';
+                            });
+                        } else {
+                            maskedText = maskedText.replace(pattern.pattern, pattern.mask);
+                        }
+                    }
+                }
+            });
+
+            maskedCount = totalMaskCount;
+            document.getElementById('maskedText').value = maskedText;
+            document.getElementById('piiCount').textContent = totalMaskCount;
+            
+            if (totalMaskCount > 0) {
+                showStatus(`✅ ${totalMaskCount} PII instances masked successfully!`, 'success');
+            } else {
+                showStatus('ℹ️ No matching PII patterns found in text', 'info');
+            }
+        }
+        
+        // Token counter (approximate: 4 chars = 1 token)
+        function countTokens(text) {
+            return Math.ceil(text.length / 4);
+        }
+
+        // Analysis Type Tracking
+        function getSelectedAnalysisTypes() {
+            return Array.from(document.querySelectorAll('.analysis-type:checked'))
+                .map(cb => cb.value);
+        }
+
+        // Generate Optimized Prompt
+        function nextStep(stepNum) {
+            if (stepNum === 3) {
+                generateOptimizedPrompt();
+                switchTabDirect('step4');
+            } else {
+                const stepMap = {
+                    1: 'step2',
+                    2: 'step3'
+                };
+                if (stepMap[stepNum]) {
+                    switchTabDirect(stepMap[stepNum]);
+                }
+            }
+        }
+
+        function generateOptimizedPrompt() {
+            const docType = document.querySelector('input[name="docType"]:checked').value;
+            const docTitle = document.getElementById('docTitle').value || 'Financial Document';
+            const maskedText = document.getElementById('maskedText').value;
+            const rawText = document.getElementById('ocrText').value;
+            const analysisTypes = getSelectedAnalysisTypes();
+            const customQuestions = document.getElementById('customQuestions').value;
+            const outputFormat = document.querySelector('input[name="outputFormat"]:checked').value;
+
+            if (!maskedText.trim()) {
+                showStatus('❌ Please mask the text first!', 'error');
+                return;
+            }
+
+            // Build the prompt
+            let prompt = `You are a financial analysis expert. Analyze the following document with PII-masked data:\n\n`;
+            prompt += `**Document Type:** ${docType.replace('-', ' ').toUpperCase()}\n`;
+            prompt += `**Document Title:** ${docTitle}\n`;
+            prompt += `**Extraction Date:** ${new Date().toLocaleDateString()}\n\n`;
+            prompt += `**Document Data:**\n---\n${maskedText}\n---\n\n`;
+            
+            prompt += `**Analysis Requirements:**\n`;
+            
+            if (analysisTypes.includes('ratios')) {
+                prompt += `- Calculate and explain key financial ratios (ROE, ROA, Current Ratio, Debt-to-Equity, Quick Ratio, etc.)\n`;
+            }
+            if (analysisTypes.includes('trends')) {
+                prompt += `- Identify growth trends and patterns over the period shown\n`;
+            }
+            if (analysisTypes.includes('risks')) {
+                prompt += `- Highlight potential risks and areas of concern\n`;
+            }
+            if (analysisTypes.includes('benchmarking')) {
+                prompt += `- Compare with industry benchmarks if possible\n`;
+            }
+            if (analysisTypes.includes('forecasting')) {
+                prompt += `- Provide forecasts for next quarters/years based on trends\n`;
+            }
+            if (analysisTypes.includes('investment')) {
+                prompt += `- Assess investment potential and opportunities\n`;
+            }
+
+            if (customQuestions.trim()) {
+                prompt += `\n**Custom Questions to Address:**\n${customQuestions.split('\n').map(q => q.trim() ? `- ${q.trim()}` : '').filter(l => l).join('\n')}\n`;
+            }
+
+            prompt += `\n**Output Format:** ${outputFormat.replace('-', ' ').toUpperCase()}\n`;
+            prompt += `\n**Important Notes:**\n`;
+            prompt += `- All personally identifiable information (PII) has been masked for privacy protection\n`;
+            prompt += `- Focus on extracting actionable insights from the masked data\n`;
+            prompt += `- Provide recommendations based on the available information`;
+
+            // Calculate token counts correctly
+            const rawTokenCount = countTokens(rawText);
+            const maskedTokenCount = countTokens(maskedText);
+            const promptTokenCount = countTokens(prompt);
+            const tokensSavedByMasking = rawTokenCount - maskedTokenCount;
+            const savingsPercent = ((tokensSavedByMasking / rawTokenCount) * 100).toFixed(1);
+            
+            // Display stats
+            document.getElementById('rawTokens').textContent = rawTokenCount.toLocaleString();
+            document.getElementById('maskedTokens').textContent = maskedTokenCount.toLocaleString();
+            document.getElementById('tokensSaved').textContent = tokensSavedByMasking.toLocaleString();
+            document.getElementById('costRaw').textContent = rawTokenCount.toLocaleString();
+            document.getElementById('costMasked').textContent = maskedTokenCount.toLocaleString();
+            document.getElementById('costSavings').textContent = `${tokensSavedByMasking.toLocaleString()} tokens (${savingsPercent}%)`;
+            document.getElementById('costFinal').textContent = promptTokenCount.toLocaleString();
+            
+            // Display prompt
+            document.getElementById('rawPrompt').value = prompt;
+            displayOptimizedPrompt(prompt);
+            
+            showStatus(`✅ Prompt generated! Masking saves ${tokensSavedByMasking} tokens (${savingsPercent}%)`, 'success');
+        }
+
+        function displayOptimizedPrompt(prompt) {
+            const promptBox = document.getElementById('optimizedPrompt');
+            promptBox.innerHTML = prompt
+                .replace(/\n/g, '<br>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/- /g, '• ');
+        }
+
+        function copyToAI() {
+            const prompt = document.getElementById('rawPrompt').value;
+            const aiNotice = `[PASTE THIS INTO CLAUDE/CHATGPT]\n\n${prompt}\n\n[END OF PROMPT]`;
+            copyTextToClipboard(aiNotice);
+            alert('✅ Prompt copied! Ready to paste into Claude/ChatGPT');
+        }
+
+        function copyPromptToClipboard() {
+            const prompt = document.getElementById('rawPrompt').value;
+            copyTextToClipboard(prompt);
+        }
+
+        function regenerateFromRaw() {
+            const prompt = document.getElementById('rawPrompt').value;
+            displayOptimizedPrompt(prompt);
+            showStatus('🔄 Prompt regenerated!', 'success');
+        }
+
+        function downloadPrompt() {
+            const prompt = document.getElementById('rawPrompt').value;
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(prompt));
+            element.setAttribute('download', 'optimized-prompt.txt');
+            element.style.display = 'none';
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+            showStatus('⬇️ Prompt downloaded!', 'success');
+        }
+
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.innerText || element.value || element.textContent;
+            copyTextToClipboard(text);
+        }
+
+        function copyTextToClipboard(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            alert('✅ Copied to clipboard!');
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        // Initialize Mermaid
+        if (typeof mermaid !== 'undefined') {
+            mermaid.initialize({ 
+                startOnLoad: true, 
+                theme: 'default',
+                flowchart: { useMaxWidth: true }
+            });
+        }
+
+        // Send the optimized prompt to /chat endpoint
+        async function sendToChat() {
+            const prompt = document.getElementById('rawPrompt').value;
+            if (!prompt.trim()) { showStatus('❌ No prompt to send', 'error'); return; }
+
+            const btn = document.getElementById('sendChatBtn');
+            btn.disabled = true;
+            showStatus('<span class="spinner"></span>Sending prompt to chat...', 'loading');
+
+            try {
+                const resp = await fetch(`${API_BASE}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: prompt })
+                });
+
+                if (!resp.ok) {
+                    const text = await resp.text();
+                    showStatus('❌ Chat request failed: ' + text, 'error');
+                    btn.disabled = false;
+                    return;
+                }
+
+                // If streaming body is available, read incrementally
+                document.getElementById('aiOutput').value = '';
+                if (resp.body && typeof resp.body.getReader === 'function') {
+                    const reader = resp.body.getReader();
+                    const decoder = new TextDecoder();
+                    let ndjsonBuffer = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        ndjsonBuffer += decoder.decode(value, { stream: true });
+                        const lines = ndjsonBuffer.split('\n');
+                        ndjsonBuffer = lines.pop() || '';
+                        for (const line of lines) {
+                            if (!line.trim()) continue;
+                            try {
+                                    const parsed = JSON.parse(line);
+                                    // If this is the streaming message format, extract assistant content
+                                    if (parsed && parsed.message && parsed.message.content) {
+                                        document.getElementById('aiOutput').value += parsed.message.content;
+                                    } else {
+                                        // fallback: pretty-print unknown JSON
+                                        document.getElementById('aiOutput').value += JSON.stringify(parsed, null, 2) + '\n\n';
+                                    }
+                                } catch (e) {
+                                    // non-json line: append raw
+                                    document.getElementById('aiOutput').value += line + '\n';
+                                }
+                        }
+                    }
+                    if (ndjsonBuffer.trim()) {
+                        try { document.getElementById('aiOutput').value += JSON.stringify(JSON.parse(ndjsonBuffer), null, 2); } catch(e) { document.getElementById('aiOutput').value += ndjsonBuffer; }
+                    }
+                    showStatus('✅ Chat streaming completed', 'success');
+                } else {
+                    const text = await resp.text();
+                    document.getElementById('aiOutput').value = text;
+                    showStatus('✅ Chat response received', 'success');
+                }
+            } catch (err) {
+                console.error(err);
+                showStatus('❌ Error sending to chat: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // RAG flow: upload document, then query using stored docId
+        async function sendToRag() {
+            const maskedText = document.getElementById('maskedText').value;
+            const docTitle = document.getElementById('docTitle').value || 'Financial Document';
+            const prompt = document.getElementById('rawPrompt').value;
+
+            if (!maskedText.trim()) { showStatus('❌ Please mask text first', 'error'); return; }
+            if (!prompt.trim()) { showStatus('❌ No prompt to use as query', 'error'); return; }
+
+            const btn = document.getElementById('sendRagBtn');
+            btn.disabled = true;
+            showStatus('<span class="spinner"></span>Uploading document to RAG store...', 'loading');
+
+            try {
+                const up = await fetch(`${API_BASE}/documents`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: docTitle, text: maskedText })
+                });
+
+                if (!up.ok) {
+                    const t = await up.text();
+                    showStatus('❌ Failed to store document: ' + t, 'error');
+                    btn.disabled = false;
+                    return;
+                }
+
+                const j = await up.json();
+                const docId = j.id;
+                showStatus('<span class="spinner"></span>Document stored, running RAG query...', 'loading');
+
+                const q = await fetch(`${API_BASE}/rag`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ docId, query: prompt, topK: 3 })
+                });
+
+                if (!q.ok) {
+                    const t = await q.text();
+                    showStatus('❌ RAG query failed: ' + t, 'error');
+                    btn.disabled = false;
+                    return;
+                }
+
+                const resp = await q.json();
+                // Pretty-print whatever the server returned
+                document.getElementById('aiOutput').value = JSON.stringify(resp, null, 2);
+                showStatus('✅ RAG response received', 'success');
+            } catch (err) {
+                console.error(err);
+                showStatus('❌ RAG error: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function clearAIOutput() {
+            document.getElementById('aiOutput').value = '';
+            showStatus('🗑️ AI output cleared', 'info');
+        }
+    </script>
+</body>
+</html>
